@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>x-engine hub</title>
+    <!-- css: bootstrap -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+    <!-- js: jQuery -->
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+    <!-- js: bootstrap -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <!-- js: script -->
+    <script src="/script.js"></script>
+  </head>
+  <body>
+
+    <!-- download frame -->
+    <form id="download_form" style="display: none;" action="/download" method="post"> 
+      <input type="hidden" id="name" name="name">
+    </form>
+
+    <!-- header container -->
+    <div class="container">
+      <div class="page-header">
+        <h1>x-engine hub</h1>
+      </div>
+    </div>
+
+    <!-- tab container -->
+    <div class="container">
+      <ul class="nav nav-tabs">
+        <li class="active"><a data-toggle="tab" href="#modules">Modules</a></li>
+        <li               ><a data-toggle="tab" href="#nodes">Nodes</a></li>
+        <li               ><a data-toggle="tab" href="#servers">Servers</a></li>
+        <li               ><a data-toggle="tab" href="#domains">Domains</a></li>
+      </ul>
+    </div>
+
+    <!-- body container -->
+    <div class="container tab-content">
+
+      <!-- modules -->
+      <div id="modules" class="row tab-pane fade in active">
+        <div class="col-md-12">
+          <div class="panel" style="padding: 10px">
+            <div class="row">
+              <form action="/upload" accept-charset="UTF-8" method="post" enctype="multipart/form-data">
+                <div class="panel-body">
+                  <div class="form-group">
+                    UploadFile<input type="file" name="file" class="form-control" required="required">
+                  </div>
+                  <button class="btn btn-success pull-right"><i class="glyphicon glyphicon-open"></i> upload</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          <div class="row" style="padding: 10px">
+            <ul class="list-group">
+              {{range .files }}
+                <li class="list-group-item">
+                  <span><i class="glyphicon glyphicon-briefcase"></i>  {{ .Time }} : {{ .Name }}</span>
+                  <span onclick="javascript:check('{{ .Name }} を削除します',function(){execute({key: 'deleteFile', name: '{{ .Name }}'});});"
+                      class="btn btn-sm btn-danger pull-right"
+                      style="cursor: pointer;height: 20px;padding: 0px 5px;margin-left: 10px;"><i class="glyphicon glyphicon-trash"></i> delete</span>
+                  <a href="/download/{{ .Name }}" download class="btn btn-sm btn-info pull-right"
+                      style="height: 20px;padding: 0px 5px;margin-right: 0px;"><i class="glyphicon glyphicon-save"></i> download</a>
+                </li>
+              {{end}}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- nodes -->
+      <div id="nodes" class="row tab-pane fade">
+        <div class="col-md-12">
+          <div class="panel" style="padding: 10px">
+            <div class="row">
+           </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </body>
+</html>
+
