@@ -76,7 +76,14 @@
         <div class="col-md-12">
           <div class="panel" style="padding: 10px">
             <div class="row">
-           </div>
+
+              {{range .nodes }}
+                <li class="list-group-item">
+                  <span><i class="glyphicon glyphicon-briefcase"></i>  {{ .Addr }} : {{ .Status }} : {{ .Name }}</span>
+                </li>
+              {{end}}
+ 
+            </div>
           </div>
         </div>
       </div>
