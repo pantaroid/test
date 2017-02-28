@@ -12,7 +12,7 @@ import (
   "io/ioutil"
   "syscall"
   "strings"
-  _ "strconv"
+  "strconv"
   "time"
   "encoding/json"
 )
@@ -22,33 +22,40 @@ type UploadedFile struct {
   Time string//time.Time
 }
 
+// "192.1687.0.2": [
+//   ServiceServer
+// ]
+
+
 type ServiceServer struct {
   Port string
   Status int
   Module string
 
   Name string
-  Node Node
+  Node *Node
+  Domains []string
 }
 
 type Node struct {
   IP string
-  Port string
+  Status string
+  Message string
 
   Name string
-  ServiceServers []ServiceServer
+  ServiceServers map[string]*ServiceServer
 }
 
 type Domain struct {
   Key string
   Class string
 
-  ServiceServers []ServiceServer
+  ServiceServers []*ServiceServer
 }
 
 type HubInfo struct {
   Template string
-  Nodes []Node
+  Nodes map[string]Node
   Domains map[string]Domain
 }
 
@@ -57,7 +64,7 @@ const (
   dateTimeTemplateLayout = "20060102_150405"
 )
 
-func index(c *gin.Context, h *HubInfo) {
+func index(c *gin.Context, info *HubInfo) {
   files, _ := ioutil.ReadDir("./files")
   size := len(files)
   lists := make([]UploadedFile, size)
@@ -66,13 +73,13 @@ func index(c *gin.Context, h *HubInfo) {
   }
   c.HTML(http.StatusOK, "index.tmpl", gin.H {
     "files": lists,
-    "template": h.Template,
-    "nodes": h.Nodes,
-    "domains": h.Domains,
+    "template": info.Template,
+    "nodes": info.Nodes,
+    "domains": info.Domains,
   })
 }
 
-func execute(c *gin.Context, h *HubInfo) {
+func execute(c *gin.Context, info *HubInfo) {
   var json map[string]interface{}
   err := c.BindJSON(&json)
   if err != nil {
@@ -85,10 +92,17 @@ func execute(c *gin.Context, h *HubInfo) {
   switch json["key"] {
     case "removeFile":
       os.Remove("./files/" + json["name"].(string))
+    case "addDomain":
+      newDomain := json["name"].(string)
+      info.Domains[newDomain] = Domain {
+        Key: newDomain,
+        Class: "domain" + strconv.Itoa(len(info.Domains)),
+        ServiceServers: []*ServiceServer{},
+      }
     default:
   }
 
-  index(c, h)
+  index(c, info)
   //c.Redirect(http.StatusMovedPermanently, "/")
 }
 
@@ -159,68 +173,80 @@ func main() {
   {// ResourceMaster
     go func() {
       var info *HubInfo
-      info = &HubInfo{}
+      info = &HubInfo {
+        Template: "test_template.json",
+        Nodes: map[string]Node{},
+        Domains: map[string]Domain{},
+      }
 
-      info.Template = "test_template.json"
+      //info.Template = "test_template.json"
+
       // :> debug
       node0 := Node {
         IP: "192.168.0.1",
-        Port: ":51710",
+        Status: "接続中",
         Name: "node0",
+        ServiceServers: map[string]*ServiceServer{},
       }
       test0 := ServiceServer {
         Port: ":51711",
-        Status: 0,
+        Status: 0,//"停止中",
         Module: "20170221_test_v1.0.0.jar",
-        Node: node0,
+        Node: &node0,
       }
-      node0.ServiceServers = append(node0.ServiceServers, test0)
+      //node0.ServiceServers = append(node0.ServiceServers, &test0)
+      node0.ServiceServers[test0.Port] = &test0
 
       node1 := Node {
         IP: "192.168.0.2",
-        Port: ":51710",
+        Status: "接続中",
         Name: "node1",
+        ServiceServers: map[string]*ServiceServer{},
       }
       test1 := ServiceServer {
         Port: ":51711",
-        Status: 1,
+        Status: 1,//"稼働中",
         Module: "20170221_test_v1.0.1.jar",
         Name: "",
-        Node: node1,
+        Node: &node1,
       }
       test2 := ServiceServer {
         Port: ":51712",
-        Status: 2,
+        Status: 2,//"同期中",
         Module: "20170221_test_v1.0.2.jar",
         Name: "test server name",
-        Node: node1,
+        Node: &node1,
       }
-      node1.ServiceServers = append(node1.ServiceServers, test1)
-      node1.ServiceServers = append(node1.ServiceServers, test2)
+      //node1.ServiceServers = append(node1.ServiceServers, &test1)
+      //node1.ServiceServers = append(node1.ServiceServers, &test2)
+      node1.ServiceServers[test1.Port] = &test1
+      node1.ServiceServers[test2.Port] = &test2
 
-      info.Nodes = append(info.Nodes, node0)
-      info.Nodes = append(info.Nodes, node1)
+      //info.Nodes = append(info.Nodes, node0)
+      //info.Nodes = append(info.Nodes, node1)
+      info.Nodes[node0.IP] = node0
+      info.Nodes[node1.IP] = node1
 
       info.Domains = map[string]Domain {}
       info.Domains["domain0"] = Domain {
         Key: "domain0",
         Class: "domain0",
-        ServiceServers: []ServiceServer{ test0 },
+        ServiceServers: []*ServiceServer{ &test0 },
       }
       info.Domains["domain1"] = Domain {
         Key: "domain1",
         Class: "domain1",
-        ServiceServers: []ServiceServer{ test0, test1 },
+        ServiceServers: []*ServiceServer{ &test0, &test1 },
       }
       info.Domains["domain2"] = Domain {
         Key: "domain2",
         Class: "domain2",
-        ServiceServers: []ServiceServer{ test0, test1, test2 },
+        ServiceServers: []*ServiceServer{ &test0, &test1, &test2 },
       }
       info.Domains["domain3"] = Domain {
         Key: "domain3",
         Class: "domain3",
-        ServiceServers: []ServiceServer{ test1, test2 },
+        ServiceServers: []*ServiceServer{ &test1, &test2 },
       }
       // <: debug
 
@@ -256,7 +282,7 @@ func main() {
         if err == nil {
           message := string(buf[:rlen])
           //rlen, err = conn.WriteToUDP([]byte(s), remote)
-          fmt.Printf("Receive [%v]: %v\n", remote, message)
+          fmt.Printf("Receive %v:%v -> %v\n", remote.IP, remote.Port, message)
 
           // test
           if strings.HasPrefix(message, "A") {
@@ -266,14 +292,29 @@ func main() {
             }
 
             fInfo(func(info *HubInfo) {
+              info.Nodes["192.168.0.1"].ServiceServers[":51711"].Module = "!!!! TEST !!!!"
+
               //status, _ := strconv.Atoi(parts[1])
-              info.Nodes = append(info.Nodes, Node {
-                Port: parts[1],
-                Name: parts[2],
-                IP: parts[3],
-              })
+              //info.Nodes = append(info.Nodes, Node {
+              //  Status: parts[1],
+              //  Name: parts[2],
+              //  IP: parts[3],
+              //})
             })
           }
+
+          if strings.HasPrefix(message, "N") {
+            // notice
+            // N>PortNo>[Module]
+            parts := strings.Split(message, ">")
+            fmt.Printf("  %s\n", parts[1])
+            
+          } else if strings.HasPrefix(message, "E") {
+            // M>Message
+            parts := strings.Split(message, ">")
+            fmt.Printf("  %s\n", parts[1])
+          }
+          // ignore othres.
         }
 
         //n, addr, err := ServerConn.ReadFromUDP(buf)
