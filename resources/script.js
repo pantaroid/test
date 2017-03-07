@@ -23,6 +23,14 @@ function execute(params) {
 
 // execute command and refresh window, use callback function.
 function execute(params, callback) {
+  // addServer   : ip
+  // renameServer: ip, port, name
+  // stopServer  : ip, port
+  // syncServer  : ip, port
+  // addDomain   : name
+  // delDomain   : name
+  // assign      : ip, port, domain, priority
+  // exclude     : ip, port, domain
   $.post("/execute", JSON.stringify(params), function(data){
     document.write(data);
     if (callback) callback();
@@ -31,7 +39,7 @@ function execute(params, callback) {
 
 // execute command and redirect.
 function redirect(tab, params) {
-  $.post("/execute", JSON.stringify(params), function(data){ location.href = "/" + tab; });
+  $.post("/execute", JSON.stringify(params), function(data){ location.href = "/" + tab; location.reload(); });
 }
 
 $(document).ready(function() {

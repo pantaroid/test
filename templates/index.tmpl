@@ -10,7 +10,7 @@
     <!-- js: bootstrap -->
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
     <!-- js: script -->
-    <script src="/script.js"></script>
+    <script src="/script.js?ver20170303"></script>
     <!-- style sheet -->
     <style>
       .btn-slim {
@@ -18,6 +18,12 @@
         height: 20px;
         padding: 0px 5px;
         margin-left: 10px;
+      }
+      .list-group-item-slim {
+        display: inline-block;
+        padding: 3px 6px;
+        margin: 0px 3px 3px 0px;
+        border: 1px solid #ddd;
       }
     </style>
   </head>
@@ -41,7 +47,7 @@
         <li class="active"><a data-toggle="tab" href="#modules">Modules</a></li>
         <li               ><a data-toggle="tab" href="#servers">Servers</a></li>
         <li               ><a data-toggle="tab" href="#domains">Domains</a></li>
-        <li               ><a data-toggle="tab" href="#setting">Setting</a></li>
+        <li               ><a data-toggle="tab" href="#template">Template</a></li>
       </ul>
     </div>
 
@@ -68,7 +74,7 @@
               {{ range .files }}
                 <li class="list-group-item">
                   <span><i class="glyphicon glyphicon-briefcase"></i>  {{ .Time }} : {{ .Name }}</span>
-                  <span onclick="javascript:check('{{ .Name }} を削除します',function(){execute({key: 'removeFile', name: '{{ .Name }}'});});"
+                  <span onclick="javascript:check('{{ .Name }} を削除します',function(){ redirect('#modules', { key: 'removeFile', name: '{{ .Name }}' });});"
                       class="btn btn-sm btn-slim btn-danger pull-right"><i class="glyphicon glyphicon-trash"></i> Remove</span>
                   <a href="/download/{{ .Name }}" download class="btn btn-sm btn-slim btn-info pull-right"><i class="glyphicon glyphicon-save"></i> Download</a>
                 </li>
@@ -84,11 +90,18 @@
           <div class="panel" style="padding: 10px">
             <div class="row">
               {{ range $i, $e := .nodes }}
-                <li class="list-group-item">
+                {{ $node_stopped := eq $e.Status 0 }}
+                {{ $node_warning := eq $e.Status 8 }}
+                {{ $node_danger := eq $e.Status 9 }}
+                <li class="list-group-item" style="background-color: #{{ if $node_stopped }}cdcdcd{{ else if $node_warning }}fff2e3{{ else if $node_danger }}fff2fe{{ else }}ffffff{{ end }};">
                   <div>
-                    <i class="glyphicon glyphicon-hdd"></i> <a style="cursor: pointer;" data-toggle="collapse" data-target="#node-{{ $i }}">{{ .IP }}</a>
-                    <span onclick="javascript:check('{{ .IP }}にサービスサーバを追加します', function() { redirect('#servers', { key: 'createServer' }); });"
-                          class="btn btn-sm btn-slim btn-success pull-right"><i class="glyphicon glyphicon-plus"></i> Add server</span>
+                    <i class="glyphicon glyphicon-hdd"></i> 
+                    <a style="cursor: pointer;" data-toggle="collapse" data-target="#node-{{ $i }}">{{ $e.IP }}</a>
+                    <span style="color: #{{ if $node_stopped }}aaa{{ else if $node_warning }}cc9{{ else if $node_danger }}faa{{ else }}333{{ end }};"></span>
+                    {{ if or $node_stopped $node_warning $node_danger }}{{ else }}
+                      <span onclick="javascript:check('{{ .IP }}にサービスサーバを追加します', function() { redirect('#servers', { key: 'addServer', ip: '{{ $e.IP }}' }); });"
+                            class="btn btn-sm btn-slim btn-success pull-right"><i class="glyphicon glyphicon-plus"></i> Add server</span>
+                    {{ end }}
                   </div>
                   <div id="node-{{ $i }}" class="collapse in">
                     <div class="panel panel-default">
@@ -104,33 +117,52 @@
                         </thead>
                         <tbody>
                           {{ range .ServiceServers }}
-                          <tr>
-                            <td>{{ .Name }}</td>
-                            <td>{{ .Port }}</td>
-                            <td>
-                              {{ if eq .Status 0 }}StandBy
-                              {{ else if eq .Status 1 }}Active
-                              {{ else if eq .Status 2 }}Updating
-                              {{ else }}Unknown
-                              {{ end }}
-                            </td>
-                            <td>{{ .Module }}</td>
-                            <td>
-                              <span onclick="javascript:check('', function(){ execute({key: 'addServer'}); });"
-                                    class="btn btn-sm btn-slim btn-primary"><i class="glyphicon glyphicon-pencil"></i> Rename</span>
-                              {{ if ne .Status 2 }}
-                              <span onclick="javascript:check('', function(){ execute({key: 'addServer'}); });"
-                                    class="btn btn-sm btn-slim btn-info"><i class="glyphicon glyphicon-import"></i> Update</span>
-                              {{ end }}
-                              {{ if eq .Status 0 }}<!-- StandBy -->
-                              <span onclick="javascript:check('', function(){ execute({key: 'addServer'}); });"
-                                    class="btn btn-sm btn-slim btn-success"><i class="glyphicon glyphicon-play"></i> Start</span> 
-                              {{ else if eq .Status 1 }}<!-- Active -->
-                              <span onclick="javascript:check('', function(){ execute({key: 'addServer'}); });"
-                                    class="btn btn-sm btn-slim btn-warning"><i class="glyphicon glyphicon-pause"></i> Pause</span>
-                              {{ end }}
-                             </td>
-                          </tr>
+                            {{ $server_stopped := eq .Status 0 }}
+                            {{ $server_warning := eq .Status 8 }}
+                            {{ $server_danger := eq .Status 9 }}
+                            {{ $size := len .AssignPriorities }}
+                            <tr style="background-color: #{{ if or $node_stopped $server_stopped }}cdcdcd{{ else if or $node_warning $server_warning }}fff2e3{{ else if or $node_danger $server_danger }}fff2fe{{ else }}ffffff{{ end }};">
+                              <td{{ if lt 0 $size }} rowspan="2"{{ end }}>{{ .Name }}</td>
+                              <td>{{ .Port }}</td>
+                              <td>
+                                {{      if or $node_stopped $node_danger }}Node Dead
+                                {{ else if eq .Status 0 }}Stooped
+                                {{ else if eq .Status 1 }}Active
+                                {{ else if eq .Status 2 }}Synchronizing
+                                {{ else if eq .Status 8 }}Warning
+                                {{ else if eq .Status 9 }}Danger
+                                {{ else }}Unknown
+                                {{ end }}
+                              </td>
+                              <td><a style="cursor: pointer;" onclick="javascript:accept('適用するファイル名を入力してください', function(filename) { redirect('#servers', { key: 'setModule', ip: '{{ $e.IP }}', port: '{{ .Port }}', name: filename }); });">{{ if eq .Module "" }}適用モジュールを選択{{ else }}{{ .Module }}{{ end }}</a></td>
+                              <td>
+                                <span onclick="javascript:accept('サーバ名を入力してください', function(newName){ redirect('#servers', { key: 'renameServer', ip: '{{ $e.IP }}', port: '{{ .Port }}', name: newName }); });"
+                                      class="btn btn-sm btn-slim btn-primary"><i class="glyphicon glyphicon-pencil"></i> Rename</span>
+                                {{ if ne $e.Status 0 }}{{ if ne $e.Status 9 }}
+                                  {{ if ne .Status 2 }}
+                                  <span onclick="javascript:check('{{ $e.IP }}{{ .Port }}を同期します', function(){ redirect('#servers', { key: 'syncServer', ip: '{{ $e.IP }}', port: '{{ .Port }}' }); });"
+                                        class="btn btn-sm btn-slim btn-info"><i class="glyphicon glyphicon-import"></i> Synchronize</span>
+                                  {{ end }}
+                                  <span onclick="javascript:check('{{ $e.IP }}{{ .Port }}を停止します', function(){ redirect('#servers', { key: 'stopServer', ip: '{{ $e.IP }}', port: '{{ .Port }}' }); });"
+                                        class="btn btn-sm btn-slim btn-warning"><i class="glyphicon glyphicon-stop"></i> Stop</span>
+                                {{ end }}{{ end }}
+                              </td>
+                            </tr style="background-color: #{{ if or $node_stopped $server_stopped }}cdcdcd{{ else if or $node_warning $server_warning }}fff2e3{{ else if or $node_danger $server_danger }}fff2fe{{ else }}ffffff{{ end }};">
+                            {{ if lt 0 $size }}
+                              <tr>
+                                <th>Domains</th>
+                                <td colspan="3">
+                                  <ul style="list-style-type: disc;padding-left: 10px;">
+                                    {{ range .AssignPriorities }}
+                                      {{      if eq .Priority 0 }}<li class="list-group-item-slim" style="background-color: #aaaaaa;">{{ .Domain.Key }}</li>
+                                      {{ else if eq .Priority 1 }}<li class="list-group-item-slim" style="background-color: #b7ebff;">{{ .Domain.Key }}</li>
+                                      {{ else if eq .Priority 2 }}<li class="list-group-item-slim" style="background-color: #ceffd9;">{{ .Domain.Key }}</li>
+                                      {{ end }}
+                                    {{ end }}
+                                  </ul>
+                                </td>
+                              </tr>
+                            {{ end }}
                           {{ end }}
                         </tbody>
                       </table>
@@ -148,18 +180,20 @@
         <div class="col-md-12">
           <div class="panel" style="padding: 10px">
             <div class="row">
-              <span onclick="javascript:accept('新規ドメイン', function(newDomain){ redirect('#domains', { domain: newDomain }); });" 
+              <span onclick="javascript:accept('追加する新規ドメインを入力してください', function(newdomain){ redirect('#domains', { key: 'addDomain', name: newdomain }); });" 
                     class="btn btn-sm btn-success" style="margin-bottom: 12px;">
                 <i class="glyphicon glyphicon-plus"></i> Add domain
               </span>
             </div>
             <div class="row">
-              {{range .domains }}
+              {{ range .domains }}
                 <li class="list-group-item">
                   <div>
                     <i class="glyphicon glyphicon-road"></i> <a style="cursor: pointer;" data-toggle="collapse" data-target="#domain-{{ .Class }}">{{ .Key }}</a>
-                    <span onclick="javascript:check('{{ .Key }} にサービスサーバを追加します', function() { redirect('#domains', { key: 'addServer', domain: '{{ .Key }}' }); });"
-                        class="btn btn-sm btn-slim btn-success pull-right"><i class="glyphicon glyphicon-plus"></i> Assign server</span>
+                    <span onclick="javascript:check('{{ .Key }}を削除します', function() { redirect('#domains', { key: 'delDomain', name: '{{ .Key }}' }); });"
+                          class="btn btn-sm btn-slim btn-danger pull-right"><i class="glyphicon glyphicon-remove"></i> Delete domain</span>
+                    <span onclick="javascript:accept('追加するサーバIP:ポート番号:プライオリティ(1=Primary,2=Secondary)を入力してください', function(ipp) { var arr = ipp.split(':'); redirect('#domains', { key: 'assign', ip: arr[0], port: ':' + arr[1], domain: '{{ .Key }}', priority: arr[2] }); });"
+                          class="btn btn-sm btn-slim btn-success pull-right"><i class="glyphicon glyphicon-plus"></i> Assign server</span>
                   </div>
                   <div id="domain-{{ .Class }}" class="collapse">
                     <div class="panel panel-default">
@@ -167,30 +201,33 @@
                         <thead>
                           <tr>
                             <th style="width: 26%">Name(IP:Port)</th>
-                            <th style="width: 7%">Status</th>
+                            <th style="width: 14%">Status</th>
                             <th style="width: 35%">Module</th>
-                            <th style="width: 32%">Operation</th>
+                            <th style="width: 25%">Operation</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {{ range .ServiceServers }}
+                          {{ range .AssignPriorities }}
                           <tr>
                             <td>
-                              {{ if .Name }}{{ .Name }}
-                              {{ else }}{{ .Node.IP }}{{ .Port }}
+                              {{ if .ServiceServer.Name }}{{ .ServiceServer.Name }}
+                              {{ else }}{{ .ServiceServer.Node.IP }}{{ .ServiceServer.Port }}
                               {{ end }}
                             </td>
                             <td>
-                              {{ if eq .Status 0 }}StandBy
-                              {{ else if eq .Status 1 }}Active
-                              {{ else if eq .Status 2 }}Updating
-                              {{ else }}Closed
+                              {{ if eq .ServiceServer.Node.Status 9 }}Node Danger
+                              {{ else if eq .ServiceServer.Status 0 }}Server Stopped
+                              {{ else if eq .ServiceServer.Status 2 }}Server Synchrozining
+                              {{ else if eq .Priority 0 }}StandBy
+                              {{ else if eq .Priority 1 }}Primary
+                              {{ else if eq .Priority 2 }}Secondary
+                              {{ else }} Unknown
                               {{ end }}
                             </td>
-                            <td>{{ .Module }}</td>
+                            <td>{{ .ServiceServer.Module }}</td>
                             <td>
-                              <span onclick="javascript:check('', function(){ execute({key: 'addServer'}); });"
-                                    class="btn btn-sm btn-slim btn-danger"><i class="glyphicon glyphicon-remove"></i> Exclude</span>
+                              <span onclick="javascript:check('{{ .ServiceServer.Node.IP }}{{ .ServiceServer.Port }}を{{ .Domain.Key }}から割り当て除外します', function(){ redirect('#domains', { key: 'exclude', ip: '{{ .ServiceServer.Node.IP }}', port: '{{ .ServiceServer.Port }}', domain: '{{ .Domain.Key }}'}); });"
+                                    class="btn btn-sm btn-slim btn-warning"><i class="glyphicon glyphicon-remove"></i> Exclude</span>
                             </td>
                           </tr>
                           {{ end }}
@@ -205,8 +242,8 @@
         </div>
       </div>
 
-      <!-- setting -->
-      <div id="setting" class="row tab-pane fade">
+      <!-- template -->
+      <div id="template" class="row tab-pane fade">
         <div class="col-md-12">
           <div class="panel" style="padding: 10px">
             {{ if .template }}
@@ -229,6 +266,7 @@
                   <div class="form-group">
                     TemplateFile<input type="file" name="file" class="form-control" required="required">
                   </div>
+                  <input type="hidden" name="key" value="template">
                   <button class="btn btn-sm btn-success pull-right"><i class="glyphicon glyphicon-tasks"></i> Apply template</button>
                 </div>
               </form>
