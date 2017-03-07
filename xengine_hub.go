@@ -14,7 +14,7 @@ import (
   "strings"
   "strconv"
   "time"
-  _ "encoding/json"
+  "encoding/json"
   "math/rand"
   "path/filepath"
   "bufio"
@@ -28,6 +28,7 @@ const (
 type UploadedFile struct {
   Name string
   Time string//time.Time
+  Description string
 }
 
 type AssignPriority struct {
@@ -80,6 +81,7 @@ type HubInfo struct {
   Template string
   Nodes map[string]*Node
   Domains map[string]*Domain
+  Descriptions map[string]string
 }
 
 func Restore(templateName string, filePath string) (info *HubInfo, err error) {
@@ -127,6 +129,7 @@ func Restore(templateName string, filePath string) (info *HubInfo, err error) {
           Port: parts[2],
           Status: 0,
           Module: name,
+          Node: node,
         })
       }
     } else if strings.HasPrefix(record, "D") {// domain
@@ -201,7 +204,11 @@ func index(c *gin.Context, info *HubInfo) {
   size := len(files)
   lists := make([]UploadedFile, size)
   for i := 0; i < size; i++ {
-    lists[i] = UploadedFile{ files[i].Name(), files[i].ModTime().Format(dateTimeLayout) }
+    lists[i] = UploadedFile{
+      Name: files[i].Name(),
+      Time: files[i].ModTime().Format(dateTimeLayout),
+      Description: info.Descriptions[files[i].Name()],
+    }
   }
   c.HTML(http.StatusOK, "index.tmpl", gin.H {
     "files": lists,
@@ -224,6 +231,12 @@ func execute(c *gin.Context, info *HubInfo) {
   switch json["key"] {
     case "removeFile":
       os.Remove(filepath.Join("files", json["name"].(string)))
+    case "stopNode":
+      ip := json["ip"].(string)
+      node, has := info.Nodes[ip]
+      if has {
+        node.SendMessage("C>")
+      }
     case "addServer":
       ip := json["ip"].(string)
       node, has := info.Nodes[ip]
@@ -241,6 +254,18 @@ func execute(c *gin.Context, info *HubInfo) {
           server.Name = name
         }
       }
+    case "startServer":
+      ip := json["ip"].(string)
+      port := json["port"].(string)
+      node, has := info.Nodes[ip]
+      if has {
+        server, has := node.ServiceServers[port]
+        if has {
+          server.Status = 2
+          server.LastModifiedAt = time.Now()
+          node.SendMessage("S>" + port)
+        }
+      }
     case "stopServer":
       ip := json["ip"].(string)
       port := json["port"].(string)
@@ -249,7 +274,7 @@ func execute(c *gin.Context, info *HubInfo) {
         server, has := node.ServiceServers[port]
         if has {
           server.Status = 2
-          node.SendMessage("S>" + port)
+          node.SendMessage("C>" + port)
         }
       }
     case "syncServer":
@@ -366,21 +391,39 @@ func execute(c *gin.Context, info *HubInfo) {
 func upload(c *gin.Context, caller chan *HubInfo) {
   file, header, err := c.Request.FormFile("file")
   if err == nil {
+    info := <- caller
+    defer unlock(caller, info)
+
     // get filename
     fileName := header.Filename
-    if "template" != fileName {
-      filePath := filepath.Join("files", fileName)
-      // create file
-      out, err := os.Create(filePath)
+    filePath := filepath.Join("files", fileName)
+    if "on" == c.Request.FormValue("backup") {
+      _, err := os.Stat(filePath)
+      if !os.IsNotExist(err) {
+        backupName := time.Now().Format(dateTimeTemplateLayout)  + "_" + fileName
+        os.Rename(filePath, filepath.Join("files", backupName))
+        info.Descriptions[backupName] = info.Descriptions[fileName]
+      }
+    }
+    description := c.Request.FormValue("description")
+    if "" != description {
+      info.Descriptions[fileName] = description
+      bytes, err := json.Marshal(info.Descriptions)
       if err == nil {
-        defer out.Close()
-        // copy from temporary
-        _, err = io.Copy(out, file)
-        if err == nil && "template" ==  c.Request.FormValue("key") {
-          info, err := Restore(fileName, filePath)
-          if err == nil {
-            exchange(caller, info)
-          }
+        ioutil.WriteFile(filepath.Join("files", "xhub_description"), bytes, 0644)
+      }
+    }
+    // create file
+    out, err := os.Create(filePath)
+    if err == nil {
+      defer out.Close()
+      // copy from temporary
+      _, err = io.Copy(out, file)
+      if err == nil && "template" ==  c.Request.FormValue("key") {
+        info, err := Restore(fileName, filePath)
+        if err == nil {
+          exchange(caller, info)
+          os.Remove(filePath)
         }
       }
     }
@@ -461,6 +504,19 @@ func main() {
     os.Mkdir("files", 0755)
   }
 
+  // description
+  filePath := filepath.Join("files", "xhub_description")
+  _, err = os.Stat(filePath)
+  if os.IsNotExist(err) {
+    os.Create(filePath)
+  }
+  blob, err := ioutil.ReadFile(filePath)
+  var descriptions map[string]string
+  json.Unmarshal(blob, &descriptions)
+  if descriptions == nil {
+    descriptions = map[string]string {}
+  }
+
   // resource channel.
   cInfo := make(chan *HubInfo)
 
@@ -471,44 +527,11 @@ func main() {
         Template: "[none template]",
         Nodes: map[string]*Node{},
         Domains: map[string]*Domain{},
+        Descriptions: descriptions,
       }
-
-      // :> debug
-      //node0 := Node {
-      //  IP: "192.168.0.1",
-      //  Status: 1,
-      //  LastModifiedAt: time.Now(),
-      //  ServiceServers: map[string]*ServiceServer{},
-      //}
-      //server0 := ServiceServer {
-      //  Port: ":51711",
-      //  Status: 1,
-      //  Module: "20170221_test_v1.0.0.jar",
-      //  Node: &node0,
-      //}
-      //domain0 := Domain {
-      //  Key: "domain.Test",
-      //  Class: "domain" + strconv.Itoa(len(info.Domains)),
-      //}
-      //assign0 := AssignPriority {
-      //  Priority: 1,
-      //  Domain: &domain0,
-      //  ServiceServer: &server0,
-      //}
-      //server0.AssignPriorities = append(server0.AssignPriorities, &assign0)
-      //domain0.AssignPriorities = append(domain0.AssignPriorities, &assign0)
-      //node0.ServiceServers[server0.Port] = &server0
-      //info.Nodes[node0.IP] = &node0
-      //info.Domains[domain0.Key] = &domain0
-      // <: debug
-
       for {
         cInfo <- info
         info = <- cInfo
-        //select {
-        //  case cInfo <- info:
-        //    info = <- cInfo
-        //}
       }
     }()
   }
@@ -639,16 +662,24 @@ func main() {
                     Port: port,
                     Status: 1,
                     Module: moduleName,
+                    Node: node,
                   })
                   node.ServiceServers[server.Port] = server
                 }
                 server.Status = 1
                 server.LastModifiedAt = time.Now()
-                if 2 < len(parts) {
-                  if "" != server.Module && server.Module != parts[2] {
+                if "" != server.Module {
+                  if 2 < len(parts) {
+                    if server.Module != parts[2] {
+                      server.Status = 2
+                      node.SendMessage("S>" + server.Port + ">" + server.Module)
+                    }
+                  } else {
                     server.Status = 2
                     node.SendMessage("S>" + server.Port + ">" + server.Module)
                   }
+                } else if 2 < len(parts) {
+                  server.Module = parts[2]
                 }
               }
             })

@@ -64,7 +64,18 @@
                   <div class="form-group">
                     UploadFile<input type="file" name="file" class="form-control" required="required">
                   </div>
-                  <button class="btn btn-sm btn-success pull-right"><i class="glyphicon glyphicon-open"></i> Upload</button>
+                  <div class="form-group">
+                    Description<input type="text" name="description" class="form-control">
+                  </div>
+                  <div class="form-group">
+                    <div class="checkbox pull-right">
+                      <label><input type="checkbox" name="backup" checked>同名ファイルがある場合に元のファイルを退避する</label>
+                    </div>
+                    <div style="clear:both;"></div>
+                  </div>
+                  <div class="form-group">
+                    <button class="btn btn-sm btn-success pull-right"><i class="glyphicon glyphicon-open"></i> Upload</button>
+                  </div>
                 </div>
               </form>
             </div>
@@ -73,10 +84,13 @@
             <ul class="list-group">
               {{ range .files }}
                 <li class="list-group-item">
-                  <span><i class="glyphicon glyphicon-briefcase"></i>  {{ .Time }} : {{ .Name }}</span>
-                  <span onclick="javascript:check('{{ .Name }} を削除します',function(){ redirect('#modules', { key: 'removeFile', name: '{{ .Name }}' });});"
-                      class="btn btn-sm btn-slim btn-danger pull-right"><i class="glyphicon glyphicon-trash"></i> Remove</span>
-                  <a href="/download/{{ .Name }}" download class="btn btn-sm btn-slim btn-info pull-right"><i class="glyphicon glyphicon-save"></i> Download</a>
+                  <div>
+                    <span><i class="glyphicon glyphicon-briefcase"></i>  {{ .Time }} : {{ .Name }}</span>
+                    <span onclick="javascript:check('{{ .Name }} を削除します',function(){ redirect('#modules', { key: 'removeFile', name: '{{ .Name }}' });});"
+                          class="btn btn-sm btn-slim btn-danger pull-right"><i class="glyphicon glyphicon-trash"></i> Remove</span>
+                    <a href="/download/{{ .Name }}" download class="btn btn-sm btn-slim btn-info pull-right"><i class="glyphicon glyphicon-save"></i> Download</a>
+                  </div>
+                  <div style="font-size: 12px; padding: 2px 2px 2px 15px;">{{ .Description }}</div>
                 </li>
               {{ end }}
             </ul>
@@ -126,11 +140,11 @@
                               <td>{{ .Port }}</td>
                               <td>
                                 {{      if or $node_stopped $node_danger }}Node Dead
-                                {{ else if eq .Status 0 }}Stooped
-                                {{ else if eq .Status 1 }}Active
-                                {{ else if eq .Status 2 }}Synchronizing
-                                {{ else if eq .Status 8 }}Warning
-                                {{ else if eq .Status 9 }}Danger
+                                {{ else if eq .Status 0 }}<span style="color: #666666;">Stooped</span>
+                                {{ else if eq .Status 1 }}<span style="color: #6b6bff;">Active</span>
+                                {{ else if eq .Status 2 }}<span style="color: #6ba4ef;">Synchronizing</span>
+                                {{ else if eq .Status 8 }}<span style="color: #ffd46b;">Warning</span>
+                                {{ else if eq .Status 9 }}<span style="color: #ff6b6b;">Danger</span>
                                 {{ else }}Unknown
                                 {{ end }}
                               </td>
@@ -138,14 +152,20 @@
                               <td>
                                 <span onclick="javascript:accept('サーバ名を入力してください', function(newName){ redirect('#servers', { key: 'renameServer', ip: '{{ $e.IP }}', port: '{{ .Port }}', name: newName }); });"
                                       class="btn btn-sm btn-slim btn-primary"><i class="glyphicon glyphicon-pencil"></i> Rename</span>
-                                {{ if ne $e.Status 0 }}{{ if ne $e.Status 9 }}
-                                  {{ if ne .Status 2 }}
-                                  <span onclick="javascript:check('{{ $e.IP }}{{ .Port }}を同期します', function(){ redirect('#servers', { key: 'syncServer', ip: '{{ $e.IP }}', port: '{{ .Port }}' }); });"
-                                        class="btn btn-sm btn-slim btn-info"><i class="glyphicon glyphicon-import"></i> Synchronize</span>
+                                {{ if or $node_stopped $node_danger }}
+                                {{ else }}
+                                  {{ if ne .Status 0 }}
+                                    {{ if ne .Status 2 }}
+                                    <span onclick="javascript:check('{{ $e.IP }}{{ .Port }}を同期します', function(){ redirect('#servers', { key: 'syncServer', ip: '{{ $e.IP }}', port: '{{ .Port }}' }); });"
+                                          class="btn btn-sm btn-slim btn-info"><i class="glyphicon glyphicon-import"></i> Synchronize</span>
+                                    {{ end }}
+                                    <span onclick="javascript:check('{{ $e.IP }}{{ .Port }}を停止します', function(){ redirect('#servers', { key: 'stopServer', ip: '{{ $e.IP }}', port: '{{ .Port }}' }); });"
+                                          class="btn btn-sm btn-slim btn-warning"><i class="glyphicon glyphicon-stop"></i> Stop</span>
+                                  {{ else }}
+                                    <span onclick="javascript:check('{{ $e.IP }}{{ .Port }}を開始します', function(){ redirect('#servers', { key: 'startServer', ip: '{{ $e.IP }}', port: '{{ .Port }}' }); });"
+                                          class="btn btn-sm btn-slim btn-success"><i class="glyphicon glyphicon-play"></i> Start</span>
                                   {{ end }}
-                                  <span onclick="javascript:check('{{ $e.IP }}{{ .Port }}を停止します', function(){ redirect('#servers', { key: 'stopServer', ip: '{{ $e.IP }}', port: '{{ .Port }}' }); });"
-                                        class="btn btn-sm btn-slim btn-warning"><i class="glyphicon glyphicon-stop"></i> Stop</span>
-                                {{ end }}{{ end }}
+                                {{ end }}
                               </td>
                             </tr style="background-color: #{{ if or $node_stopped $server_stopped }}cdcdcd{{ else if or $node_warning $server_warning }}fff2e3{{ else if or $node_danger $server_danger }}fff2fe{{ else }}ffffff{{ end }};">
                             {{ if lt 0 $size }}
