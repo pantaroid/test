@@ -335,21 +335,31 @@ func execute(c *gin.Context, info *HubInfo) {
     case "assign":
       ip := json["ip"].(string)
       port := json["port"].(string)
-      domain := json["domain"].(string)
+      domainKey := json["domain"].(string)
       priority, err := strconv.Atoi(json["priority"].(string))
       node, has := info.Nodes[ip]
       if has && nil == err {
         server, has := node.ServiceServers[port]
         if has {
-          domain, has := info.Domains[domain]
-          if has {
-            assign := AssignPriority {
-              Priority: priority,
-              Domain: domain,
-              ServiceServer: server,
+          unique := true
+          for i := range server.AssignPriorities {
+            if domainKey == server.AssignPriorities[i].Domain.Key {
+              server.AssignPriorities[i].Priority = priority
+              unique = false
+              break
             }
-            server.AssignPriorities = append(server.AssignPriorities, &assign)
-            domain.AssignPriorities = append(domain.AssignPriorities, &assign)
+          }
+          if unique {
+            domain, has := info.Domains[domainKey]
+            if has {
+              assign := AssignPriority {
+                Priority: priority,
+                Domain: domain,
+                ServiceServer: server,
+              }
+              server.AssignPriorities = append(server.AssignPriorities, &assign)
+              domain.AssignPriorities = append(domain.AssignPriorities, &assign)
+            }
           }
         }
       }
@@ -410,7 +420,7 @@ func upload(c *gin.Context, caller chan *HubInfo) {
       info.Descriptions[fileName] = description
       bytes, err := json.Marshal(info.Descriptions)
       if err == nil {
-        ioutil.WriteFile(filepath.Join("files", "xhub_description"), bytes, 0644)
+        ioutil.WriteFile(filepath.Join("files", "xhub_descriptions.json"), bytes, 0644)
       }
     }
     // create file
@@ -505,7 +515,7 @@ func main() {
   }
 
   // description
-  filePath := filepath.Join("files", "xhub_description")
+  filePath := filepath.Join("files", "xhub_descriptions.json")
   _, err = os.Stat(filePath)
   if os.IsNotExist(err) {
     os.Create(filePath)

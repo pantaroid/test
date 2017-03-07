@@ -148,7 +148,11 @@
                                 {{ else }}Unknown
                                 {{ end }}
                               </td>
-                              <td><a style="cursor: pointer;" onclick="javascript:accept('適用するファイル名を入力してください', function(filename) { redirect('#servers', { key: 'setModule', ip: '{{ $e.IP }}', port: '{{ .Port }}', name: filename }); });">{{ if eq .Module "" }}適用モジュールを選択{{ else }}{{ .Module }}{{ end }}</a></td>
+                              <td>
+                                <a style="cursor: pointer;" data-toggle="modal" data-target="#moduleModal" onclick="javascript:$('#moduleIP').val('{{ $e.IP }}');$('#modulePort').val('{{ .Port }}');">
+                                  {{ if eq .Module "" }}適用モジュールを選択{{ else }}{{ .Module }}{{ end }}
+                                </a>
+                              </td>
                               <td>
                                 <span onclick="javascript:accept('サーバ名を入力してください', function(newName){ redirect('#servers', { key: 'renameServer', ip: '{{ $e.IP }}', port: '{{ .Port }}', name: newName }); });"
                                       class="btn btn-sm btn-slim btn-primary"><i class="glyphicon glyphicon-pencil"></i> Rename</span>
@@ -212,8 +216,9 @@
                     <i class="glyphicon glyphicon-road"></i> <a style="cursor: pointer;" data-toggle="collapse" data-target="#domain-{{ .Class }}">{{ .Key }}</a>
                     <span onclick="javascript:check('{{ .Key }}を削除します', function() { redirect('#domains', { key: 'delDomain', name: '{{ .Key }}' }); });"
                           class="btn btn-sm btn-slim btn-danger pull-right"><i class="glyphicon glyphicon-remove"></i> Delete domain</span>
-                    <span onclick="javascript:accept('追加するサーバIP:ポート番号:プライオリティ(1=Primary,2=Secondary)を入力してください', function(ipp) { var arr = ipp.split(':'); redirect('#domains', { key: 'assign', ip: arr[0], port: ':' + arr[1], domain: '{{ .Key }}', priority: arr[2] }); });"
-                          class="btn btn-sm btn-slim btn-success pull-right"><i class="glyphicon glyphicon-plus"></i> Assign server</span>
+                    <span data-toggle="modal" data-target="#assignModal" onclick="javascript:$('#assignDomain').val('{{ .Key }}');" class="btn btn-sm btn-slim btn-success pull-right">
+                      <i class="glyphicon glyphicon-plus"></i> Assign server
+                    </span>
                   </div>
                   <div id="domain-{{ .Class }}" class="collapse">
                     <div class="panel panel-default">
@@ -239,8 +244,8 @@
                               {{ else if eq .ServiceServer.Status 0 }}Server Stopped
                               {{ else if eq .ServiceServer.Status 2 }}Server Synchrozining
                               {{ else if eq .Priority 0 }}StandBy
-                              {{ else if eq .Priority 1 }}Primary
-                              {{ else if eq .Priority 2 }}Secondary
+                              {{ else if eq .Priority 1 }}<span style="color: #33b"><i class="glyphicon glyphicon-star"></i> Primary</span>
+                              {{ else if eq .Priority 2 }}<span style="color: #3b3"><i class="glyphicon glyphicon-star-empty"></i> Secondary</span>
                               {{ else }} Unknown
                               {{ end }}
                             </td>
@@ -291,6 +296,68 @@
                 </div>
               </form>
              </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- module modal -->
+      <div class="modal fade" id="moduleModal" tabindex="-1" role="dialog" aria-labelledby="moduleModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">適用するモジュールを選択してください</h5>
+              <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+            <div class="modal-body">
+              <select class="form-control" id="moduleFile">
+              {{ range .files }}
+                <option value="{{ .Name }}">{{ .Name }}{{ if ne .Description "" }} ({{ .Description }}){{ end }}</option>
+              {{ end }}
+              </select>
+              <input type="hidden" id="moduleIP" value="">
+              <input type="hidden" id="modulePort" value="">
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+              <button type="button" class="btn btn-primary"
+                      onclick="javascript:check($('#moduleIP').val() + $('#modulePort').val() + ' に ' + $('#moduleFile').val() + 'を適用します', function() { redirect('#servers', { key: 'setModule', ip: $('#moduleIP').val(), port: $('#modulePort').val(), name: $('#moduleFile').val() }); });"
+                      onclick="javascript:alert();">OK</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- assign modal -->
+      <div class="modal fade" id="assignModal" tabindex="-1" role="dialog" aria-labelledby="assignModalLabel" aria-hidden="true">
+        <div class="modal-dialog" role="document">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title">割り当てるサーバと優先度を選択してください</h5>
+              <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+              </button>
+            </div>
+            <div class="modal-body">
+              Server: <select class="form-control" id="assignServer">
+              {{ range $i, $e := .nodes }}
+                {{ range .ServiceServers }}
+                  <option value="{{ $e.IP }}@{{ .Port }}">{{ if eq .Name "" }}{{ $e.IP }}{{ .Port }}{{ else }}{{ .Name }}{{ end }}</option>
+                {{ end }}
+              {{ end }}
+              </select>
+              Priority: <select class="form-control" id="priority">
+                <option value="1">Primary</option>
+                <option value="2">Secondary</option>
+              </select>
+              <input type="hidden" id="assignDomain" value="">
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+              <button type="button" class="btn btn-primary"
+                      onclick="javascript:var arr = $('#assignServer').val().split('@'); redirect('#domains', { key: 'assign', ip: arr[0], port: arr[1], domain: $('#assignDomain').val(), priority: $('#priority').val() });">OK</button>
+            </div>
           </div>
         </div>
       </div>
