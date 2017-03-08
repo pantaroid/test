@@ -18,17 +18,21 @@ import (
   "math/rand"
   "path/filepath"
   "bufio"
+  "sort"
 )
 
 const (
+  descriptionFile = "xhub_descriptions.json"
+  dateTimeSimple = "20060102150405"
   dateTimeLayout = "2006-01-02 15:04:05"
   dateTimeTemplateLayout = "20060102_150405"
 )
 
 type UploadedFile struct {
   Name string
-  Time string//time.Time
+  Time string
   Description string
+  TimeInt int
 }
 
 type AssignPriority struct {
@@ -138,7 +142,7 @@ func Restore(templateName string, filePath string) (info *HubInfo, err error) {
         Class: "d" + time.Now().Format(dateTimeTemplateLayout) + strconv.Itoa(len(info.Domains)),
       })
     } else if strings.HasPrefix(record, "A") {// assign
-      // A>127.0.0.1>12345>domain.test>1
+      // A>127.0.0.1>:12345>domain.test>1
       node, has := info.Nodes[parts[1]]
       priority, err := strconv.Atoi(parts[4])
       if has && err == nil && 0 < priority && priority < 3 {
@@ -154,6 +158,19 @@ func Restore(templateName string, filePath string) (info *HubInfo, err error) {
             server.AssignPriorities = append(server.AssignPriorities, assign)
             domain.AssignPriorities = append(domain.AssignPriorities, assign)
           }
+        }
+      }
+    } else if strings.HasPrefix(record, "[") {// server name
+      // [127.0.0.1>:12345]test
+      li := strings.Index(record, "]")
+      ipport := record[1:li]
+      ip := strings.Split(ipport, ">")[0]
+      port := strings.Split(ipport, ">")[1]
+      node, has := info.Nodes[ip]
+      if has {
+        server, has := node.ServiceServers[port]
+        if has {
+          server.Name = record[(li + 1):]
         }
       }
     }
@@ -181,6 +198,11 @@ func Backup(info *HubInfo) []byte {
         priority := strconv.Itoa(assign.Priority)
         buf = append(buf, ("A>" + node.IP + ">" + server.Port + ">" + assign.Domain.Key + ">" + priority + "\n")...)
       }
+      if "" != server.Name {
+        line = "[" + node.IP + ">" + server.Port + "]" + server.Name + "\n"
+        buf = append(buf, line...)
+      }
+
     }
   }
   return buf
@@ -202,14 +224,21 @@ func (node Node) SendMessage(message string) {
 func index(c *gin.Context, info *HubInfo) {
   files, _ := ioutil.ReadDir("files")
   size := len(files)
-  lists := make([]UploadedFile, size)
+  lists := make([]UploadedFile, size - 1)
   for i := 0; i < size; i++ {
-    lists[i] = UploadedFile{
-      Name: files[i].Name(),
-      Time: files[i].ModTime().Format(dateTimeLayout),
-      Description: info.Descriptions[files[i].Name()],
+    if descriptionFile != files[i].Name() {
+      val, _ := strconv.Atoi(files[i].ModTime().Format(dateTimeSimple))
+      lists[i] = UploadedFile{
+        Name: files[i].Name(),
+        Time: files[i].ModTime().Format(dateTimeLayout),
+        Description: info.Descriptions[files[i].Name()],
+        TimeInt: val,
+      }
     }
   }
+  sort.Slice(lists, func(i, j int) bool {
+    return lists[i].TimeInt > lists[j].TimeInt
+  })
   rval, err := c.Cookie("reload")
   if err == nil && "" != rval {
     c.SetCookie("reload", "", 10, "/", "", false, true)
@@ -245,7 +274,10 @@ func execute(c *gin.Context, info *HubInfo) {
 
   switch json["key"] {
     case "removeFile":
-      os.Remove(filepath.Join("files", json["name"].(string)))
+      fileName := json["name"].(string)
+      os.Remove(filepath.Join("files", fileName))
+      delete(info.Descriptions, fileName)
+      saveDescriptions(info)
     case "stopNode":
       ip := json["ip"].(string)
       node, has := info.Nodes[ip]
@@ -412,7 +444,12 @@ func execute(c *gin.Context, info *HubInfo) {
   index(c, info)
   //c.Redirect(http.StatusMovedPermanently, "/")
 }
-
+func saveDescriptions(info *HubInfo) {
+  bytes, err := json.Marshal(info.Descriptions)
+  if err == nil {
+    ioutil.WriteFile(filepath.Join("files", descriptionFile), bytes, 0644)
+  } 
+}
 func upload(c *gin.Context, caller chan *HubInfo) {
   file, header, err := c.Request.FormFile("file")
   if err == nil {
@@ -421,21 +458,20 @@ func upload(c *gin.Context, caller chan *HubInfo) {
     // get filename
     fileName := header.Filename
     filePath := filepath.Join("files", fileName)
+    description := c.Request.FormValue("description")
+    descSave := "" != description
     if "on" == c.Request.FormValue("backup") {
       _, err := os.Stat(filePath)
       if !os.IsNotExist(err) {
         backupName := time.Now().Format(dateTimeTemplateLayout)  + "_" + fileName
         os.Rename(filePath, filepath.Join("files", backupName))
         info.Descriptions[backupName] = info.Descriptions[fileName]
+        descSave = true
       }
     }
-    description := c.Request.FormValue("description")
-    if "" != description {
+    if descSave {
       info.Descriptions[fileName] = description
-      bytes, err := json.Marshal(info.Descriptions)
-      if err == nil {
-        ioutil.WriteFile(filepath.Join("files", "xhub_descriptions.json"), bytes, 0644)
-      }
+      saveDescriptions(info)
     }
     // create file
     out, err := os.Create(filePath)
@@ -446,6 +482,7 @@ func upload(c *gin.Context, caller chan *HubInfo) {
       if err == nil && "template" ==  c.Request.FormValue("key") {
         newInfo, err := Restore(fileName, filePath)
         if err == nil {
+          newInfo.Descriptions = info.Descriptions
           os.Remove(filePath)
           c.SetCookie("reload", "3000", 10, "/", "", false, true)
           unlock(caller, newInfo)
@@ -538,7 +575,7 @@ func main() {
   }
 
   // description
-  filePath := filepath.Join("files", "xhub_descriptions.json")
+  filePath := filepath.Join("files", descriptionFile)
   _, err = os.Stat(filePath)
   if os.IsNotExist(err) {
     os.Create(filePath)
@@ -637,6 +674,7 @@ func main() {
                   }
                 }
                 if err {
+                  fmt.Printf("%v\n", err)
                   conn.WriteToUDP([]byte("E@NotAssignDomain"), remote)
                 } else {
                   fmt.Println("D@" + server.Node.IP + server.Port)

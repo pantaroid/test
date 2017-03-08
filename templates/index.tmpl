@@ -80,8 +80,10 @@
                 </div>
               </form>
             </div>
-          </div>
           <div class="row" style="padding: 10px">
+            <div class="form-group">
+              <a href="/download/xhub_descriptions.json" download class="btn btn-sm btn-info"><i class="glyphicon glyphicon-save"></i> Download descriptions file</a>
+            </div>
             <ul class="list-group">
               {{ range .files }}
                 <li class="list-group-item">
@@ -95,6 +97,7 @@
                 </li>
               {{ end }}
             </ul>
+          </div>
           </div>
         </div>
       </div>
@@ -176,21 +179,21 @@
                                   {{ end }}
                                 {{ end }}
                               </td>
-                            </tr style="background-color: #{{ if or $node_stopped $server_stopped }}cdcdcd{{ else if or $node_warning $server_warning }}fff2e3{{ else if or $node_danger $server_danger }}fff2fe{{ else }}ffffff{{ end }};">
+                            </tr>
                             {{ if lt 0 $size }}
-                              <tr>
-                                <th>Domains</th>
-                                <td colspan="3">
-                                  <ul style="list-style-type: disc;padding-left: 10px;">
-                                    {{ range .AssignPriorities }}
-                                      {{      if eq .Priority 0 }}<li class="list-group-item-slim" style="background-color: #aaaaaa;">{{ .Domain.Key }}</li>
-                                      {{ else if eq .Priority 1 }}<li class="list-group-item-slim" style="background-color: #b7ebff;">{{ .Domain.Key }}</li>
-                                      {{ else if eq .Priority 2 }}<li class="list-group-item-slim" style="background-color: #ceffd9;">{{ .Domain.Key }}</li>
-                                      {{ end }}
+                            <tr style="background-color: #{{ if or $node_stopped $server_stopped }}cdcdcd{{ else if or $node_warning $server_warning }}fff2e3{{ else if or $node_danger $server_danger }}fff2fe{{ else }}ffffff{{ end }};">
+                              <th>Domains</th>
+                              <td colspan="3">
+                                <ul style="list-style-type: disc;padding-left: 10px;">
+                                  {{ range .AssignPriorities }}
+                                    {{      if eq .Priority 0 }}<li class="list-group-item-slim" style="background-color: #aaaaaa;">{{ .Domain.Key }}</li>
+                                    {{ else if eq .Priority 1 }}<li class="list-group-item-slim" style="background-color: #b7ebff;">{{ .Domain.Key }}</li>
+                                    {{ else if eq .Priority 2 }}<li class="list-group-item-slim" style="background-color: #ceffd9;">{{ .Domain.Key }}</li>
                                     {{ end }}
-                                  </ul>
-                                </td>
-                              </tr>
+                                  {{ end }}
+                                </ul>
+                              </td>
+                            </tr>
                             {{ end }}
                           {{ end }}
                         </tbody>
