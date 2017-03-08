@@ -135,7 +135,7 @@ func Restore(templateName string, filePath string) (info *HubInfo, err error) {
     } else if strings.HasPrefix(record, "D") {// domain
       info.Domains[parts[1]] = &(Domain {
         Key: parts[1],
-        Class: "d" + time.Now().Format(dateTimeTemplateLayout),
+        Class: "d" + time.Now().Format(dateTimeTemplateLayout) + strconv.Itoa(len(info.Domains)),
       })
     } else if strings.HasPrefix(record, "A") {// assign
       // A>127.0.0.1>12345>domain.test>1
@@ -210,11 +210,26 @@ func index(c *gin.Context, info *HubInfo) {
       Description: info.Descriptions[files[i].Name()],
     }
   }
+  rval, err := c.Cookie("reload")
+  if err == nil && "" != rval {
+    c.SetCookie("reload", "", 10, "/", "", false, true)
+  } else {
+    for _, node := range info.Nodes {
+      for _, server := range node.ServiceServers {
+        if server.Status == 2 {
+          rval = "3000"
+          break
+        }
+      }
+      if "" != rval { break }
+    }
+  }
   c.HTML(http.StatusOK, "index.tmpl", gin.H {
     "files": lists,
     "template": info.Template,
     "nodes": info.Nodes,
     "domains": info.Domains,
+    "reload": rval,
   })
 }
 
@@ -260,7 +275,7 @@ func execute(c *gin.Context, info *HubInfo) {
       node, has := info.Nodes[ip]
       if has {
         server, has := node.ServiceServers[port]
-        if has {
+        if has && 0 == server.Status {
           server.Status = 2
           server.LastModifiedAt = time.Now()
           node.SendMessage("S>" + port)
@@ -272,7 +287,7 @@ func execute(c *gin.Context, info *HubInfo) {
       node, has := info.Nodes[ip]
       if has {
         server, has := node.ServiceServers[port]
-        if has {
+        if has && 1 == server.Status {
           server.Status = 2
           node.SendMessage("C>" + port)
         }
@@ -283,11 +298,11 @@ func execute(c *gin.Context, info *HubInfo) {
       node, has := info.Nodes[ip]
       if has {
         server, has := node.ServiceServers[port]
-        if has && "" != server.Module {
+        if has && (1 == server.Status || 8 == server.Status) && "" != server.Module {
           _, err := os.Stat(filepath.Join("files", server.Module))
           if !os.IsNotExist(err) {
             server.Status = 2
-            node.SendMessage("S>" + port + ">" + server.Module)
+            node.SendMessage("S>" + port + "><" + server.Module)
           }
         }
       }
@@ -300,7 +315,7 @@ func execute(c *gin.Context, info *HubInfo) {
         node, has := info.Nodes[ip]
         if has {
           server, has := node.ServiceServers[port]
-          if has && server.Module != name {
+          if has && 1 == server.Status && server.Module != name {
             server.Module = name
             server.Status = 2
             node.SendMessage("S>" + port + ">" + server.Module)
@@ -386,7 +401,7 @@ func execute(c *gin.Context, info *HubInfo) {
         assigns := make([]*AssignPriority, 0)
         for index := range domain.AssignPriorities {
           assign := domain.AssignPriorities[index]
-          if domainKey != assign.Domain.Key {
+          if port != assign.ServiceServer.Port {
             assigns = append(assigns, assign)
           }
         }
@@ -402,7 +417,6 @@ func upload(c *gin.Context, caller chan *HubInfo) {
   file, header, err := c.Request.FormFile("file")
   if err == nil {
     info := <- caller
-    defer unlock(caller, info)
 
     // get filename
     fileName := header.Filename
@@ -430,12 +444,19 @@ func upload(c *gin.Context, caller chan *HubInfo) {
       // copy from temporary
       _, err = io.Copy(out, file)
       if err == nil && "template" ==  c.Request.FormValue("key") {
-        info, err := Restore(fileName, filePath)
+        newInfo, err := Restore(fileName, filePath)
         if err == nil {
-          exchange(caller, info)
           os.Remove(filePath)
+          c.SetCookie("reload", "3000", 10, "/", "", false, true)
+          unlock(caller, newInfo)
+        } else {
+          unlock(caller, info)
         }
+      } else {
+        unlock(caller, info)
       }
+    } else {
+      unlock(caller, info)
     }
   }
   if err != nil {
@@ -473,7 +494,9 @@ func download(c *gin.Context, info *HubInfo) {
 }
 
 func exchange(caller chan *HubInfo, info *HubInfo) {
+fmt.Println(1)
   <- caller
+fmt.Println(2)
   caller <- info
 }
 
@@ -534,7 +557,7 @@ func main() {
     go func() {
       var info *HubInfo
       info = &HubInfo {
-        Template: "[none template]",
+        Template: "",
         Nodes: map[string]*Node{},
         Domains: map[string]*Domain{},
         Descriptions: descriptions,
@@ -616,9 +639,12 @@ func main() {
                 if err {
                   conn.WriteToUDP([]byte("E@NotAssignDomain"), remote)
                 } else {
+                  fmt.Println("D@" + server.Node.IP + server.Port)
                   conn.WriteToUDP([]byte("D@" + server.Node.IP + server.Port), remote)
                 }
               })
+            } else {
+              conn.WriteToUDP([]byte("E@NotAssignDomain"), remote)
             }
           } else if strings.HasPrefix(message, "C") {
             // C[>PortNo]
@@ -709,16 +735,13 @@ func main() {
     router := gin.Default()
     // load templates
     router.LoadHTMLGlob("./templates/*")
-    // resources
-    router.StaticFile("/script.js", "./resources/script.js")
     // root
     //router.GET("/", index)
     router.GET("/", func(c *gin.Context) {
       lock(cInfo, func(info *HubInfo) {
         index(c, info)
       })
-   })
-
+    })
     // loaders
     router.POST("/upload", func(c *gin.Context) {
       upload(c, cInfo)
@@ -734,7 +757,22 @@ func main() {
         execute(c, info)
       })
     })
+    // resources
+    router.StaticFile("/fonts/glyphicons-halflings-regular.woff2", "./resources/glyphicons-halflings-regular.woff2")
+    router.StaticFile("/fonts/glyphicons-halflings-regular.woff", "./resources/glyphicons-halflings-regular.woff")
+    router.StaticFile("/fonts/glyphicons-halflings-regular.ttf", "./resources/glyphicons-halflings-regular.ttf")
+    router.StaticFile("/fonts/glyphicons-halflings-regular.svg", "./resources/glyphicons-halflings-regular.svg")
+    router.StaticFile("/fonts/glyphicons-halflings-regular.eot", "./resources/glyphicons-halflings-regular.eot")
+    router.StaticFile("/bootstrap-theme.min.css", "./resources/bootstrap-theme.min.css")
+    router.StaticFile("/bootstrap-theme.min.css.map", "./resources/bootstrap-theme.min.css.map")
+    router.StaticFile("/bootstrap.min.css", "./resources/bootstrap.min.css")
+    router.StaticFile("/bootstrap.min.css.map", "./resources/bootstrap.min.css.map")
+    router.StaticFile("/bootstrap.min.js", "./resources/bootstrap.min.js")
+    router.StaticFile("/jquery.min.js", "./resources/jquery.min.js")
+    router.StaticFile("/jquery.min.map", "./resources/jquery.min.map")
+    router.StaticFile("/script.js", "./resources/script.js")
 
+    // listen
     manners.ListenAndServe(":51700",  router)
     //router.Run(":51700")
   }
