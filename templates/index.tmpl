@@ -144,7 +144,7 @@
                               <td>{{ .Port }}</td>
                               <td>
                                 {{      if or $node_stopped $node_danger }}Node Dead
-                                {{ else if eq .Status 0 }}<span style="color: #666666;">Stooped</span>
+                                {{ else if eq .Status 0 }}<span style="color: #666666;">Stopped</span>
                                 {{ else if eq .Status 1 }}<span style="color: #6b6bff;">Active</span>
                                 {{ else if eq .Status 2 }}<span style="color: #6ba4ef;">Synchronizing</span>
                                 {{ else if eq .Status 8 }}<span style="color: #ffd46b;">Warning</span>

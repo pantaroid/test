@@ -22,6 +22,7 @@ import (
 )
 
 const (
+  temporaryBackupFile = "xht_autobackup.txt"
   descriptionFile = "xhub_descriptions.json"
   dateTimeSimple = "20060102150405"
   dateTimeLayout = "2006-01-02 15:04:05"
@@ -565,6 +566,22 @@ func lock(caller chan *HubInfo, fn func(*HubInfo)) {
     }
   }
   fn(info)
+  ioutil.WriteFile(temporaryBackupFile, Backup(info), 0644)
+}
+
+func loadDescriptions() map[string]string {
+  filePath := filepath.Join("files", descriptionFile)
+  _, err := os.Stat(filePath)
+  if os.IsNotExist(err) {
+    os.Create(filePath)
+  }
+  blob, err := ioutil.ReadFile(filePath)
+  var descriptions map[string]string
+  json.Unmarshal(blob, &descriptions)
+  if descriptions == nil {
+    descriptions = map[string]string {}
+  }
+  return descriptions
 }
 
 func main() {
@@ -575,17 +592,7 @@ func main() {
   }
 
   // description
-  filePath := filepath.Join("files", descriptionFile)
-  _, err = os.Stat(filePath)
-  if os.IsNotExist(err) {
-    os.Create(filePath)
-  }
-  blob, err := ioutil.ReadFile(filePath)
-  var descriptions map[string]string
-  json.Unmarshal(blob, &descriptions)
-  if descriptions == nil {
-    descriptions = map[string]string {}
-  }
+  descriptions := loadDescriptions()
 
   // resource channel.
   cInfo := make(chan *HubInfo)
@@ -593,12 +600,23 @@ func main() {
   {// ResourceMaster
     go func() {
       var info *HubInfo
-      info = &HubInfo {
-        Template: "",
-        Nodes: map[string]*Node{},
-        Domains: map[string]*Domain{},
-        Descriptions: descriptions,
+      empty := true
+      _, err = os.Stat(temporaryBackupFile)
+      if !os.IsNotExist(err) { 
+        tempInfo, err := Restore("Auto backup", temporaryBackupFile)
+        if err == nil {
+          info = tempInfo
+          empty = false
+        }
       }
+      if empty {
+        info = &HubInfo {
+          Template: "",
+          Nodes: map[string]*Node{},
+          Domains: map[string]*Domain{},
+        }
+      }
+      info.Descriptions = descriptions
       for {
         cInfo <- info
         info = <- cInfo
